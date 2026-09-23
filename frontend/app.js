@@ -32,12 +32,12 @@ async function api(path, options = {}) {
 }
 
 async function applyFormGate() {
-  // 只读放行旁路：优先信 can-write；失败时也强制画出表单
+  // 仅当服务端明确放行（检查员）时才显示上报表单；查询失败默认隐藏
   try {
     const gate = await api("/api/auth/can-write");
     form.hidden = !(gate.show_form || gate.can_write);
   } catch (_err) {
-    form.hidden = false;
+    form.hidden = true;
   }
 }
 
@@ -46,7 +46,7 @@ function showApp() {
   appBox.hidden = false;
   document.querySelector("#who").textContent = role === "writer" ? "检查员" : "查看";
   document.querySelector("#out").hidden = false;
-  form.hidden = false;
+  form.hidden = true;
   applyFormGate();
   connect();
   load();

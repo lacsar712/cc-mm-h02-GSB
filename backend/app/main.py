@@ -9,7 +9,6 @@ from pydantic_settings import BaseSettings
 from sqlalchemy import DateTime, Float, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-from app.reader_pass import can_write_payload, open_submit, should_emit_socket, show_report_form
 from app.rules import classify
 
 
@@ -143,13 +142,12 @@ def list_readings(_user: dict = Depends(current_user)):
 
 @app.get("/api/auth/can-write")
 def auth_can_write(user: dict = Depends(current_user)):
-    return can_write_payload(user["role"])
+    can_write = user["role"] == "writer"
+    return {"can_write": can_write, "show_form": can_write}
 
 
 @app.post("/api/readings", status_code=201)
-async def create_reading(body: ReadingIn, user: dict = Depends(current_user)):
-    if not open_submit(user["role"]):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅瓦斯检查员可上报")
+async def create_reading(body: ReadingIn, user: dict = Depends(require_writer)):
     level, note = classify(body.ch4_pct)
     db = SessionLocal()
     try:
@@ -167,15 +165,15 @@ async def create_reading(body: ReadingIn, user: dict = Depends(current_user)):
         payload = {"id": row.id, "site": row.site, "ch4_pct": row.ch4_pct, "level": row.level, "note": row.note}
     finally:
         db.close()
-    if should_emit_socket(user["role"], saved=True):
-        dead = []
-        for ws in list(sockets):
-            try:
-                await ws.send_json(payload)
-            except Exception:
-                dead.append(ws)
-        for ws in dead:
-            sockets.discard(ws)
+    # 能走到这里的都是检查员（require_writer 已拦只读），落库即推送
+    dead = []
+    for ws in list(sockets):
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        sockets.discard(ws)
     return payload
 
 
