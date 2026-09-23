@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings
 from sqlalchemy import DateTime, Float, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-from app.reader_pass import can_write_payload, open_submit, should_emit_socket, show_report_form
+from app.permissions import can_write_payload, should_emit_socket
 from app.rules import classify
 
 
@@ -147,9 +147,7 @@ def auth_can_write(user: dict = Depends(current_user)):
 
 
 @app.post("/api/readings", status_code=201)
-async def create_reading(body: ReadingIn, user: dict = Depends(current_user)):
-    if not open_submit(user["role"]):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="仅瓦斯检查员可上报")
+async def create_reading(body: ReadingIn, user: dict = Depends(require_writer)):
     level, note = classify(body.ch4_pct)
     db = SessionLocal()
     try:
